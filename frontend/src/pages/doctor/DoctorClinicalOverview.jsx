@@ -153,9 +153,16 @@ export const DoctorClinicalOverview = ({ patientId }) => {
     return <div style={{ color: 'var(--slate)', padding: '40px 0' }}>Loading clinical record...</div>;
   }
 
-  const patientName = overview?.user
-    ? `${overview.user.first_name} ${overview.user.last_name}`.trim() || overview.user.username
-    : `Patient #${patientId}`;
+  const patientName = overview?.demographics?.name || (overview?.user ? `${overview.user.first_name} ${overview.user.last_name}`.trim() : `Patient #${patientId}`);
+  const bloodGroupText = overview?.demographics?.blood_group || overview?.profile?.blood_group || 'N/A';
+  const hasSafety = overview?.has_safety_flag || overview?.safety_flag;
+
+  const reportedSymptoms = overview?.reported_symptoms || overview?.symptoms || [];
+  const reportedMeds = overview?.patient_reported_medications || overview?.medications || [];
+
+  const newItems = whatChanged?.new_items || whatChanged?.new_symptoms || [];
+  const updatedItems = whatChanged?.updated_items || whatChanged?.updated_symptoms || [];
+  const unchangedItems = whatChanged?.unchanged_items || whatChanged?.unchanged_symptoms || [];
 
   return (
     <div>
@@ -164,7 +171,7 @@ export const DoctorClinicalOverview = ({ patientId }) => {
         <div>
           <h1>Patient #{patientId} — {patientName}</h1>
           <p className="sub mono">
-            Patient-reported information · ID #{patientId} · Blood: {overview?.profile?.blood_group || 'N/A'}
+            Patient-reported information · ID #{patientId} · Blood: {bloodGroupText}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
@@ -178,7 +185,7 @@ export const DoctorClinicalOverview = ({ patientId }) => {
       </div>
 
       {/* Safety Alert Banner */}
-      {overview?.has_safety_flag && (
+      {hasSafety && (
         <div className="safety-banner critical">
           <IconAlert className="ic" size={22} />
           <div>
@@ -207,10 +214,10 @@ export const DoctorClinicalOverview = ({ patientId }) => {
         {/* New items */}
         <div className="wc-group">
           <div className="wc-group-label new">+ New Reported Symptoms</div>
-          {whatChanged?.new_symptoms?.length > 0 ? (
-            whatChanged.new_symptoms.map((s, i) => (
+          {newItems.length > 0 && newItems[0] !== "None" ? (
+            newItems.map((item, i) => (
               <div key={i} className="wc-row">
-                <span>{s.concern} (Severity {s.severity}/10)</span>
+                <span>{typeof item === 'string' ? item : `${item.concern} (Severity ${item.severity}/10)`}</span>
                 <span className="badge badge-new">New</span>
               </div>
             ))
@@ -222,13 +229,12 @@ export const DoctorClinicalOverview = ({ patientId }) => {
         {/* Updated items */}
         <div className="wc-group">
           <div className="wc-group-label updated">↻ Updated Symptoms</div>
-          {whatChanged?.updated_symptoms?.length > 0 ? (
-            whatChanged.updated_symptoms.map((s, i) => (
+          {updatedItems.length > 0 && updatedItems[0] !== "None" ? (
+            updatedItems.map((item, i) => (
               <div key={i} className="wc-row">
-                <span>{s.concern}</span>
+                <span>{typeof item === 'string' ? item : item.concern}</span>
                 <span className="wc-diff">
-                  <span className="old">{s.previous_severity}/10</span> →{' '}
-                  <span className="new-val">{s.current_severity}/10</span>
+                  {typeof item === 'object' ? `${item.previous_severity}/10 → ${item.current_severity}/10` : 'Updated'}
                 </span>
               </div>
             ))
@@ -240,10 +246,16 @@ export const DoctorClinicalOverview = ({ patientId }) => {
         {/* Unchanged items */}
         <div className="wc-group">
           <div className="wc-group-label unchanged">— Unchanged Information</div>
-          <div className="wc-row">
-            <span>Allergy &amp; Medical History Status</span>
-            <span style={{ color: 'var(--slate-light)', fontSize: '13px' }}>Unchanged</span>
-          </div>
+          {unchangedItems.length > 0 ? (
+            unchangedItems.map((item, i) => (
+              <div key={i} className="wc-row">
+                <span>{typeof item === 'string' ? item : 'Allergy & Baseline History Status'}</span>
+                <span style={{ color: 'var(--slate-light)', fontSize: '13px' }}>Unchanged</span>
+              </div>
+            ))
+          ) : (
+            <div className="wc-row" style={{ color: 'var(--slate-light)' }}>Baseline health record unchanged</div>
+          )}
         </div>
       </div>
 
@@ -254,8 +266,8 @@ export const DoctorClinicalOverview = ({ patientId }) => {
       <div className="card brief-card" style={{ marginBottom: '28px' }}>
         <div className="brief-section">
           <h5>Recent Patient Concerns</h5>
-          {overview?.symptoms?.length > 0 ? (
-            overview.symptoms.map((s) => (
+          {reportedSymptoms.length > 0 ? (
+            reportedSymptoms.map((s) => (
               <div key={s.id} className="brief-line">
                 <span>
                   <strong>{s.concern}</strong> — Severity {s.severity}/10
@@ -276,8 +288,8 @@ export const DoctorClinicalOverview = ({ patientId }) => {
 
         <div className="brief-section">
           <h5>Patient-Reported Medications</h5>
-          {overview?.medications?.length > 0 ? (
-            overview.medications.map((m) => (
+          {reportedMeds.length > 0 ? (
+            reportedMeds.map((m) => (
               <div key={m.id} className="brief-line">
                 <span>{m.medication_name} ({m.dosage || 'Dosage unstated'})</span>
                 <span className="badge badge-patient">Patient reported</span>
