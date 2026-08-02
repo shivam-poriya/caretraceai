@@ -338,26 +338,52 @@ async def export_intake_brief(
     """
     EXPORT THE BRIEF:
     One-click export of plain-text intake brief formatted for EHR copy-pasting.
+    Dynamically constructs a comprehensive clinical handoff from all patient-reported data.
     """
     patient = verify_doctor_patient_access(patient_id, doctor, db)
     u = db.query(User).filter(User.id == patient.user_id).first()
     p_name = f"{u.first_name} {u.last_name}".strip() if u else f"Patient #{patient_id}"
 
-    latest_session = db.query(IntakeSession).filter(
-        IntakeSession.patient_id == patient_id
-    ).order_by(IntakeSession.created_at.desc()).first()
+    symptoms = db.query(SymptomReport).filter(SymptomReport.patient_id == patient_id).all()
+    meds = db.query(PatientReportedMedication).filter(PatientReportedMedication.patient_id == patient_id).all()
+    allergies = db.query(Allergy).filter(Allergy.patient_id == patient_id).all()
+    history = db.query(MedicalHistory).filter(MedicalHistory.patient_id == patient_id).all()
+    safety_flag = db.query(IntakeSession).filter(
+        IntakeSession.patient_id == patient_id,
+        IntakeSession.safety_flag == True
+    ).first() is not None
 
-    brief_text = latest_session.summary_generated if (latest_session and latest_session.summary_generated) else "No intake brief generated yet."
+    sym_text = "\n".join([f"  • {s.concern} (Severity: {s.severity}/10, Duration: {s.duration or 'N/A'}, Pattern: {s.pattern or 'N/A'})" for s in symptoms]) if symptoms else "  • None reported"
+    med_text = "\n".join([f"  • {m.medication_name} (Dosage: {m.dosage or 'N/A'}, Frequency: {m.frequency or 'N/A'})" for m in meds]) if meds else "  • No current patient-reported medications"
+    all_text = "\n".join([f"  • {a.allergen} (Reaction: {a.reaction or 'N/A'})" for a in allergies]) if allergies else "  • No known allergies reported"
+    his_text = "\n".join([f"  • {h.condition_name} (Status: {h.status or 'Active'}, Diagnosed: {h.diagnosed_year or 'N/A'})" for h in history]) if history else "  • No significant past medical history reported"
+
+    safety_str = "⚠️ ATTENTION: Red Flag Safety Alert Triggered During Intake" if safety_flag else "No immediate urgency flags raised."
 
     formatted_export = f"""==================================================
 CLINIC INTAKE BRIEF -- {p_name.upper()}
+Patient ID: #{patient_id} | Blood Group: {patient.blood_group or 'N/A'}
 Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
 ==================================================
 
-{brief_text}
+1. PATIENT-REPORTED SYMPTOMS & CONCERNS:
+{sym_text}
+
+2. PATIENT-REPORTED MEDICATIONS:
+{med_text}
+
+3. ALLERGIES & SENSITIVITIES:
+{all_text}
+
+4. MEDICAL HISTORY & PRIOR CONDITIONS:
+{his_text}
+
+5. SAFETY & URGENCY SCREENING:
+  {safety_str}
 
 --------------------------------------------------
-Exported from Clinic Intake Assistant for EHR Paste.
+Notice: All facts above are patient-reported.
+Exported from CareTraceAI Assistant for EHR Paste.
 =================================================="""
 
     return ExportBriefResponse(
