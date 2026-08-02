@@ -16,6 +16,10 @@ export const DoctorClinicalOverview = ({ patientId }) => {
   // Source quote modal state
   const [sourceModalText, setSourceModalText] = useState(null);
 
+  // EHR Export modal state
+  const [exportModalText, setExportModalText] = useState(null);
+  const [copied, setCopied] = useState(false);
+
   // Queue question state
   const [queueInput, setQueueInput] = useState('');
   const [queuing, setQueuing] = useState(false);
@@ -73,13 +77,33 @@ export const DoctorClinicalOverview = ({ patientId }) => {
   const handleExportBrief = async () => {
     try {
       const res = await doctorAPI.exportBrief(patientId);
-      if (res.plain_text_brief) {
-        await navigator.clipboard.writeText(res.plain_text_brief);
+      const textToExport = res.export_formatted_text || res.plain_text_brief || JSON.stringify(res, null, 2);
+      setExportModalText(textToExport);
+      setCopied(false);
+      try {
+        await navigator.clipboard.writeText(textToExport);
+        setCopied(true);
         showToast('EHR Brief copied to clipboard!');
+      } catch (clipErr) {
+        showToast('EHR Brief generated! Review below.');
       }
     } catch (err) {
       showToast('Failed to export brief: ' + (err.response?.data?.detail || err.message));
     }
+  };
+
+  const handleDownloadTxt = () => {
+    if (!exportModalText) return;
+    const blob = new Blob([exportModalText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `EHR_Brief_Patient_${patientId}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast('Downloaded EHR Brief file!');
   };
 
   const handleQueueQuestion = async (e) => {
@@ -417,6 +441,62 @@ export const DoctorClinicalOverview = ({ patientId }) => {
             <button className="btn btn-secondary btn-block" onClick={() => setSourceModalText(null)}>
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* EHR Export Modal */}
+      {exportModalText && (
+        <div className="modal-overlay" onClick={() => setExportModalText(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, color: 'var(--teal-900)' }}>📋 Exported EHR Clinical Brief</h3>
+              <button className="btn-ghost" onClick={() => setExportModalText(null)} style={{ fontSize: '20px' }}>×</button>
+            </div>
+
+            <p style={{ color: 'var(--slate)', fontSize: '13.5px', marginBottom: '14px' }}>
+              One-click formatted plain-text intake brief ready for instant pasting into any Electronic Health Record (EHR) system (Epic, Cerner, AthenaHealth).
+            </p>
+
+            <pre
+              style={{
+                background: 'var(--ink)',
+                color: '#7FE0A8',
+                padding: '16px',
+                borderRadius: '10px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '13px',
+                whiteSpace: 'pre-wrap',
+                maxHeight: '320px',
+                overflowY: 'auto',
+                marginBottom: '16px',
+                border: '1px solid var(--line)'
+              }}
+            >
+              {exportModalText}
+            </pre>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(exportModalText);
+                  setCopied(true);
+                  showToast('EHR Brief copied to clipboard!');
+                }}
+              >
+                {copied ? '✓ Copied to Clipboard!' : '📋 Copy to Clipboard'}
+              </button>
+
+              <button
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
+                onClick={handleDownloadTxt}
+              >
+                💾 Download .TXT File
+              </button>
+            </div>
           </div>
         </div>
       )}
