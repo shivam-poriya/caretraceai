@@ -169,19 +169,19 @@ def extract_patient_info(patient_input: str, existing_context: str = "") -> Dict
 # ----------------------------------------------------
 # PROMPT B & C: MISSING INFO DETECTION & FOLLOW-UP
 # ----------------------------------------------------
-PROMPT_BC_SYSTEM = """You are a clinic intake assistant completing a pre-consultation report for a doctor.
-Analyze the patient's reported information and determine missing details.
+PROMPT_BC_SYSTEM = """You are a warm, empathetic clinical intake assistant preparing a structured handoff report for a doctor.
+Analyze the patient's reported information and generate a thoughtful, empathetic, and comprehensive response.
 
-RULES:
-- Do NOT diagnose.
-- Ask 1 concise, respectful follow-up question to clarify missing details (e.g. severity 0-10, duration, medication names).
-- Never ask diagnosis questions.
-- If symptoms indicate an urgent emergency (e.g., severe chest pain with breathing difficulty), output a safety alert.
+STRICT INSTRUCTIONS:
+1. EMPATHETIC ACKNOWLEDGMENT: Warmly acknowledge what the patient just reported.
+2. RECORD CONFIRMATION: Briefly confirm what details have been added or updated in their care summary.
+3. CLEAR FOLLOW-UP: Ask 1-2 respectful follow-up questions to gather missing clinical details (such as severity on a 0-10 scale, exact duration, timing, or medication dosages).
+4. STRICT GUARDRAILS: NEVER diagnose medical conditions or suggest treatment/prescriptions.
 
 Return ONLY JSON:
 {
   "missing_information": ["string"],
-  "followup_question": "string",
+  "followup_question": "string (A complete 2-3 sentence empathetic response acknowledging what was reported, confirming what was recorded, and asking clarifying follow-up questions)",
   "safety_flag": boolean,
   "safety_message": "string or null"
 }"""
@@ -190,32 +190,60 @@ Return ONLY JSON:
 def detect_missing_and_followup(structured_data: Dict[str, Any], conversation_history: List[str] = None) -> Dict[str, Any]:
     """Identifies missing intake fields and generates next follow-up question."""
     history_str = "\n".join(conversation_history[-4:]) if conversation_history else "None"
-    user_prompt = f"Current Structured Data: {json.dumps(structured_data)}\nRecent Conversation: {history_str}\nProvide missing information list and follow-up question."
+    user_prompt = f"Current Structured Data: {json.dumps(structured_data)}\nRecent Conversation: {history_str}\nProvide missing information list and empathetic follow-up response."
 
-    raw = run_gemma_prompt(PROMPT_BC_SYSTEM, user_prompt, temperature=0.2)
+    raw = run_gemma_prompt(PROMPT_BC_SYSTEM, user_prompt, temperature=0.3)
     result = clean_json_response(raw)
 
-    if not result:
-        # Rule-based fallback
+    if not result or not result.get("followup_question"):
+        # Rich rule-based fallback response
         symptoms = structured_data.get("reported_symptoms", [])
         meds = structured_data.get("patient_reported_medications", [])
         missing = []
-        question = "Could you tell me a bit more about how long you've had these symptoms and their severity?"
+        
+        ack_parts = []
+        if symptoms:
+            sym_names = ", ".join([s.get("concern") for s in symptoms if s.get("concern")])
+            if sym_names:
+                ack_parts.append(f"Thank you for sharing your update regarding {sym_names}.")
+        if meds:
+            med_names = ", ".join([m.get("medication_name") for m in meds if m.get("medication_name") and m.get("medication_name") != "Patient-reported medication"])
+            if med_names:
+                ack_parts.append(f"I've also recorded your medication details for {med_names}.")
+
+        ack_text = " ".join(ack_parts) if ack_parts else "Thank you for sharing your health update with me."
+
+        question = f"{ack_text} I've updated your care summary for your doctor to review. Could you tell me a bit more about when these symptoms started and how severe they feel right now?"
 
         if symptoms:
             sym = symptoms[0]
+            concern_name = sym.get("concern", "symptom")
             if sym.get("severity") is None:
                 missing.append("Symptom severity (0-10 scale)")
-                question = f"How severe is your {sym.get('concern', 'symptom')} on a scale from 0 to 10?"
+                question = (
+                    f"{ack_text} To help your doctor assess how you're feeling, "
+                    f"how would you rate the pain or discomfort of your {concern_name} on a scale from 0 (no pain) to 10 (worst pain imaginable)?"
+                )
             elif sym.get("duration") == "Not provided":
                 missing.append("Symptom duration")
-                question = f"When did your {sym.get('concern', 'symptom')} start?"
+                question = (
+                    f"{ack_text} I've noted a severity of {sym.get('severity')}/10 for your {concern_name}. "
+                    f"When did this first begin, and is it constant or coming and going?"
+                )
+            else:
+                question = (
+                    f"{ack_text} Your intake summary for {concern_name} (Severity: {sym.get('severity')}/10, Duration: {sym.get('duration')}) "
+                    f"has been recorded for your doctor. Is there any other symptom, allergy, or medication you would like to update today?"
+                )
 
         if meds and not missing:
             med = meds[0]
-            if med.get("medication_name") in ["Patient-reported medication", "Not provided"] or med.get("dosage") == "Not provided":
+            med_name = med.get("medication_name", "medication")
+            if med_name in ["Patient-reported medication", "Not provided"] or med.get("dosage") == "Not provided":
                 missing.append("Medication name and dosage")
-                question = "What is the specific name and dose of the medication you reported taking, if you know it?"
+                question = (
+                    f"{ack_text} Could you specify the exact brand or generic name and dosage of the medication you're taking, if you have it nearby?"
+                )
 
         result = {
             "missing_information": missing,
