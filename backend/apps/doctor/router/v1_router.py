@@ -356,7 +356,7 @@ async def export_intake_brief(
     sym_text = "\n".join([f"  • {s.concern} (Severity: {s.severity}/10, Duration: {s.duration or 'N/A'}, Pattern: {s.pattern or 'N/A'})" for s in symptoms]) if symptoms else "  • None reported"
     med_text = "\n".join([f"  • {m.medication_name} (Dosage: {m.dosage or 'N/A'}, Frequency: {m.frequency or 'N/A'})" for m in meds]) if meds else "  • No current patient-reported medications"
     all_text = "\n".join([f"  • {a.allergen} (Reaction: {a.reaction or 'N/A'})" for a in allergies]) if allergies else "  • No known allergies reported"
-    his_text = "\n".join([f"  • {h.condition_name} (Status: {h.status or 'Active'}, Diagnosed: {h.diagnosed_year or 'N/A'})" for h in history]) if history else "  • No significant past medical history reported"
+    his_text = "\n".join([f"  • {h.condition_name} (Diagnosed: {h.diagnosed_year or 'N/A'}, Notes: {h.notes or 'None'})" for h in history]) if history else "  • No significant past medical history reported"
 
     safety_str = "⚠️ ATTENTION: Red Flag Safety Alert Triggered During Intake" if safety_flag else "No immediate urgency flags raised."
 
